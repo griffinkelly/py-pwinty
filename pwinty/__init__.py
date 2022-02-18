@@ -224,8 +224,7 @@ class Asset(Resource):
         files = None
         file_opend = False
         file_obj = None
-        #take input and json-ize it immediately
-        #res = _request('Orders', 'POST', data=kwargs)
+
         try:
             if "file_path" in kwargs:
                 file_obj = open(kwargs.pop('file_path'), 'rb')
@@ -243,8 +242,6 @@ class Asset(Resource):
                 filename = os.path.basename(file_obj.name)
                 files = {'file': (filename, file_obj, 'image/jpeg')}  # pwinty requires mime
                 kwargs['md5Hash'] = md5
-
-            #res = _request('Orders/%s/Images' % order_id, 'POST', data=kwargs, files=files)
 
         finally:
             if file_opend:
@@ -283,15 +280,6 @@ class Photo(Resource):
         kwargs['attributes'] = attributes
 
         return cls(kwargs)
-    
-    @classmethod
-    def get(cls, order_id, id):
-        res = _request('Orders/%s/Images/%s' % (order_id, id), 'GET')
-        return cls(res)
-
-    def delete(self):
-        res = _request('Orders/%s/Images/%s' % (self.order_id, self.id), 'DELETE')
-        return self.__class__(res)
 
     @property
     def assets(self):
@@ -299,11 +287,10 @@ class Photo(Resource):
 
     def refresh(self):
         self._json['assets'] = self.assets.all()
-        # res = _request('Orders', 'POST', data=self._json)
-        print(self._json)
+        return self._json
 
 
-#items, basically
+
 class OrderPhotos(object):
     _photo_list = []
 
@@ -332,7 +319,6 @@ class Order(Resource):
     @classmethod
     def create(cls, **kwargs):
         #take input and json-ize it immediately
-        #res = _request('Orders', 'POST', data=kwargs)
         options = {}
         recipient = {}
 
@@ -348,41 +334,13 @@ class Order(Resource):
         recipient['address'] = options
         kwargs['recipient'] = recipient
 
-
         return cls(kwargs)
-    
-    @classmethod
-    def get(cls, id):
-        res = _request('Orders/%s' % id, 'GET')
-        return cls(res)
-    
-    @classmethod
-    def all(cls):
-        res = _request('Orders', 'GET')
-        return [cls(o) for o in res]
 
     def save(self):
         options = {}
         for name in self._editable_fields:
             if name in self._json:
                 options[name] = self._json[name]
-        #res = _request('Orders/%s' % self.id, 'PUT', options)
-        self._json = res  # Update this object with any changes
-
-    def cancel(self):
-        res = _request('Orders/%s/Status' % self.id, 'POST', data={'status': 'Cancelled'})
-        self.refresh()
-
-    def await_payment(self):
-        res = _request('Orders/%s/Status' % self.id, 'POST', data={'status': 'AwaitingPayment'})
-        self.refresh()
-
-    def get_submission_status(self):
-        res = _request('Orders/%s/SubmissionStatus' % self.id, 'GET')
-        return Resource(res)
-
-    def refresh(self):
-        res = _request('Orders/%s' % self.id, 'GET')
         self._json = res  # Update this object with any changes
 
     @property
