@@ -138,7 +138,8 @@ def _request(end_point, method, params=None, data=None, files=None):
             if 'errorMessage' in json_obj:
                 message = json_obj['errorMessage']
             else:
-                message = json_obj['Message']
+                message = json_obj
+                print(message)
             response = r.text
 
         else:
@@ -322,6 +323,10 @@ class Order(Resource):
         options = {}
         recipient = {}
 
+        if 'line2' in kwargs :
+            if kwargs['line2'] == '':
+                kwargs.pop('line2')
+
         for name in cls._recipient:
             if name in kwargs:
                 recipient[name] = kwargs.pop(name)
@@ -329,7 +334,6 @@ class Order(Resource):
         for name in cls._address:
             if name in kwargs:
                 options[name] = kwargs.pop(name)
-
 
         recipient['address'] = options
         kwargs['recipient'] = recipient
