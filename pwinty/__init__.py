@@ -218,7 +218,6 @@ class Resource(object):
 
 class Asset(Resource):
     _id_field_name = 'id'
-    _assets = []
 
     @classmethod
     def create(cls, **kwargs):
@@ -264,6 +263,10 @@ class PhotoAssets(object):
     def all(self):
         return [o._json for o in self._asset_list]
 
+    def clear(self):
+        self._asset_list[:] = []
+        return self._asset_list
+
 class Photo(Resource):
     _id_field_name = 'id'
     _assets = []
@@ -288,6 +291,7 @@ class Photo(Resource):
 
     def refresh(self):
         self._json['assets'] = self.assets.all()
+        self.assets.clear()
         return self._json
 
 
