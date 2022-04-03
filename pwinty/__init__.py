@@ -313,6 +313,10 @@ class OrderPhotos(object):
     def all(self):
         return [o._json for o in self._photo_list]
 
+    def clear(self):
+        self._photo_list[:] = []
+        return self._photo_list
+
 
 class Order(Resource):
     _id_field_name = 'id'
@@ -357,6 +361,7 @@ class Order(Resource):
 
     def submit(self):
         self._json['items'] = self.photos.all()
+        self.photos.clear()
         res = _request('Orders', 'POST', data=self._json)
         return res
 
