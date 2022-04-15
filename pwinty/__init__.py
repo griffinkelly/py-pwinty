@@ -13,15 +13,14 @@ import os
 
 
 apikey = None       # Set to your Pwinty API Key
-merchantid = None   # Set to your Pwinty API Merchant ID
 sandbox = False     # Sets whether to use the sandbox or live API
 
-VERSION = '0.3.1'
-API_VERSION = 'v3.0'
+VERSION = '0.4.0'
+API_VERSION = 'v4.0'
 
 # The HTTP endpoints for the api
-LIVE_API_URL = "https://api.pwinty.com/%s/" % API_VERSION
-SANDBOX_API_URL = "https://sandbox.pwinty.com/%s/" % API_VERSION
+LIVE_API_URL = "https://api.prodigi.com/%s/" % API_VERSION
+SANDBOX_API_URL = "https://api.sandbox.prodigi.com/%s/" % API_VERSION
 
 
 def set_apikey(value):
@@ -33,16 +32,6 @@ def set_apikey(value):
     """
     global apikey
     apikey = value
-
-def set_merchantid(value):
-    """
-    This function can be used to set the Merchant ID.
-    Alternatvly you can do:
-    >>> import pwinty
-    >>> pwinty.merchantid = "xxxxxxx"
-    """
-    global merchantid
-    merchantid = value
 
 def underscore_to_camelcase(value):
     """
@@ -109,8 +98,9 @@ def camelcase_to_underscore(value):
 
 def _request(end_point, method, params=None, data=None, files=None):
     headers = {
-        'X-Pwinty-MerchantId': merchantid,
-        'X-Pwinty-REST-API-Key': apikey
+        'X-API-Key': apikey,
+        'Content-type': 'application/json'
+
     }
     if not data and not files:
         headers['Content-Length'] = '0'
@@ -124,24 +114,34 @@ def _request(end_point, method, params=None, data=None, files=None):
         params = underscore_to_camelcase_dict(params)
     if data:
         data = underscore_to_camelcase_dict(data)
+        data = json.dumps(data)
     if files:
         files = underscore_to_camelcase_dict(files)
 
+
     r = requests.request(method, url + end_point, headers=headers, params=params, data=data, files=files)
+
 
     if r.status_code in (200, 201):
         if r.text:
-            return json.loads(r.text)['data']
+            print(r.text)
+            print(r)
+            return json.loads(r.text)
         else:
             return r.content
     else:
         if r.text:
             json_obj = json.loads(r.text)
+            print(json_obj)
+            print(r)
+            print(r.text)
             if 'errorMessage' in json_obj:
                 message = json_obj['errorMessage']
             else:
-                message = json_obj['Message']
+                message = json_obj
+                print(message)
             response = r.text
+
         else:
             message = r.content
             response = r.content
@@ -209,25 +209,18 @@ class Resource(object):
         else:
             super(Resource, self).__cmp__(other)
 
-    def __repr__(self):
-        id_string = ''
-        if self._id_field_name:
-            id_string = ' %s=%s' % (self._id_field_name, self.__getattr__(self._id_field_name))
-        return '<%s%s at %s>' % (type(self).__name__, id_string, hex(id(self)))
+    # def __repr__(self):
+    #     id_string = ''
+    #     if self._id_field_name:
+    #         id_string = ' %s=%s' % (self._id_field_name, self.__getattr__(self._id_field_name))
+    #     return '<%s%s at %s>' % (type(self).__name__, id_string, hex(id(self)))
 
 
-class Catalogue(Resource):
-    @classmethod
-    def get(cls, country_code):
-        res = _request('Catalogue/prodigi%20direct/destination/%s/prices' % (country_code,), 'GET')
-        return cls(res)
-
-
-class Photo(Resource):
+class Asset(Resource):
     _id_field_name = 'id'
 
     @classmethod
-    def create(cls, order_id, **kwargs):
+    def create(cls, **kwargs):
         files = None
         file_opend = False
         file_obj = None
@@ -250,98 +243,127 @@ class Photo(Resource):
                 files = {'file': (filename, file_obj, 'image/jpeg')}  # pwinty requires mime
                 kwargs['md5Hash'] = md5
 
-            res = _request('Orders/%s/Images' % order_id, 'POST', data=kwargs, files=files)
-
         finally:
             if file_opend:
                 file_obj.close()
 
-        return cls(res)
-    
-    @classmethod
-    def get(cls, order_id, id):
-        res = _request('Orders/%s/Images/%s' % (order_id, id), 'GET')
-        return cls(res)
+        return cls(kwargs)
 
-    def delete(self):
-        res = _request('Orders/%s/Images/%s' % (self.order_id, self.id), 'DELETE')
-        return self.__class__(res)
+class PhotoAssets(object):
+    _asset_list = []
 
-
-class OrderPhotos(object):
     def __init__(self, order_id):
         self._order_id = order_id
 
     def create(self, **kwargs):
-        return Photo.create(self._order_id, **kwargs)
+        asset = Asset.create(**kwargs)
+        self._asset_list.append(asset)
+        return asset
+
+    def all(self):
+        return [o._json for o in self._asset_list]
+
+    def clear(self):
+        self._asset_list[:] = []
+        return self._asset_list
+
+class Photo(Resource):
+    _id_field_name = 'id'
+    _assets = []
+    _attributes = ('finish',)
+
+
+    @classmethod
+    def create(cls, **kwargs):
+        attributes = {}
+
+        for name in cls._attributes:
+            if name in kwargs:
+                attributes[name] = kwargs.pop(name)
+
+        kwargs['attributes'] = attributes
+
+        return cls(kwargs)
+
+    @property
+    def assets(self):
+        return PhotoAssets(self)
+
+    def refresh(self):
+        self._json['assets'] = self.assets.all()
+        self.assets.clear()
+        return self._json
+
+
+
+class OrderPhotos(object):
+    _photo_list = []
+
+    def __init__(self, order_id):
+        self._order_id = order_id
+
+    def create(self, **kwargs):
+        photo = Photo.create(**kwargs)
+        self._photo_list.append(photo)
+        return photo
 
     def get(self, id):
         return Photo.get(self._order_id, id)
 
     def all(self):
-        res = _request('Orders/%s/Images' % self._order_id, 'GET')
-        return [Photo(o) for o in res]
+        return [o._json for o in self._photo_list]
+
+    def clear(self):
+        self._photo_list[:] = []
+        return self._photo_list
 
 
 class Order(Resource):
     _id_field_name = 'id'
-    _editable_fields = ('recipientName', 'address1', 'address2', 'addressTownOrCity', 'stateOrCounty', 'postalOrZipCode', 'preferredShippingMethod',)
+    _editable_fields = ('name', 'line1', 'line2', 'townOrCity', 'stateOrCounty', 'postalOrZipCode', 'preferredShippingMethod',)
+    _recipient = ('name',)
+    _address = ('line1', 'line2', 'townOrCity', 'stateOrCounty', 'postalOrZipCode', 'countryCode',)
+
 
     @classmethod
     def create(cls, **kwargs):
-        res = _request('Orders', 'POST', data=kwargs)
-        return cls(res)
-    
-    @classmethod
-    def get(cls, id):
-        res = _request('Orders/%s' % id, 'GET')
-        return cls(res)
-    
-    @classmethod
-    def all(cls):
-        res = _request('Orders', 'GET')
-        return [cls(o) for o in res]
+        #take input and json-ize it immediately
+        options = {}
+        recipient = {}
+
+        if 'line2' in kwargs :
+            if kwargs['line2'] == '':
+                kwargs.pop('line2')
+
+        for name in cls._recipient:
+            if name in kwargs:
+                recipient[name] = kwargs.pop(name)
+
+        for name in cls._address:
+            if name in kwargs:
+                options[name] = kwargs.pop(name)
+
+        recipient['address'] = options
+        kwargs['recipient'] = recipient
+
+        return cls(kwargs)
 
     def save(self):
         options = {}
         for name in self._editable_fields:
             if name in self._json:
                 options[name] = self._json[name]
-        res = _request('Orders/%s' % self.id, 'PUT', options)
-        self._json = res  # Update this object with any changes
-
-    def cancel(self):
-        res = _request('Orders/%s/Status' % self.id, 'POST', data={'status': 'Cancelled'})
-        self.refresh()
-
-    def submit(self):
-        res = _request('Orders/%s/Status' % self.id, 'POST', data={'status': 'Submitted'})
-        self.refresh()
-
-    def await_payment(self):
-        res = _request('Orders/%s/Status' % self.id, 'POST', data={'status': 'AwaitingPayment'})
-        self.refresh()
-
-    def get_submission_status(self):
-        res = _request('Orders/%s/SubmissionStatus' % self.id, 'GET')
-        return Resource(res)
-
-    def refresh(self):
-        res = _request('Orders/%s' % self.id, 'GET')
         self._json = res  # Update this object with any changes
 
     @property
     def photos(self):
-        return OrderPhotos(self.id)
+        return OrderPhotos(self)
 
-
-class Country(Resource):
-    _id_field_name = 'countryCode'
-
-    @classmethod
-    def all(cls):
-        res = _request('Country', 'GET')
-        return [cls(o) for o in res]
+    def submit(self):
+        self._json['items'] = self.photos.all()
+        self.photos.clear()
+        res = _request('Orders', 'POST', data=self._json)
+        return res
 
 
 class PwintyException(Exception):
