@@ -365,6 +365,10 @@ class Order(Resource):
         res = _request('Orders', 'POST', data=self._json)
         return res
 
+    @classmethod
+    def get(cls, id):
+        res = _request('Orders/ord_%s' % id, 'GET')
+        return cls(res)
 
 class PwintyException(Exception):
     pass
