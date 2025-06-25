@@ -4,12 +4,15 @@ Python client for the Pwinty photo printing API
 Copyright Sam Willis <sam.willis@gmail.com> 2014
 http://www.github.com/samwillis/py-pwinty
 
+Updated for Python 3.11.11 compatibility
+
 """
 
 import requests  # The only none standard requirement
 import hashlib
 import json
 import os
+import sys
 
 
 apikey = None       # Set to your Pwinty API Key
@@ -76,7 +79,7 @@ def camelcase_to_underscore(value):
     """
     length = len(value)
     out = ''
-    for i in xrange(length):
+    for i in range(length):
         char = value[i]
         last_char = value[i-1]
         next_char = None
@@ -185,10 +188,10 @@ class Resource(object):
         name = underscore_to_camelcase(name)
         if name in self._json:
             value = self._json[name]
-            if type(value) == dict:
+            if isinstance(value, dict):
                 value = Resource(value)
-            elif type(value) == list:
-                value = [Resource(v) if type(v)==dict else v for v in value]
+            elif isinstance(value, list):
+                value = [Resource(v) if isinstance(v, dict) else v for v in value]
             return value
         else:
             raise ValueError()
@@ -201,13 +204,10 @@ class Resource(object):
             else:
                 raise ValueError('Value readonly: %s' % name)
         else:
-            super(Resource, self).__setattr__(name, value)
+            super().__setattr__(name, value)
 
-    def __cmp__(self, other):
-        if self._id_field_name:
-            return self.__getattr__(self._id_field_name) - other.__getattr__(self._id_field_name)
-        else:
-            super(Resource, self).__cmp__(other)
+    # Note: Comparison methods removed as they don't work well with object class
+    # and aren't essential for the API functionality
 
     # def __repr__(self):
     #     id_string = ''
@@ -244,7 +244,7 @@ class Asset(Resource):
                 kwargs['md5Hash'] = md5
 
         finally:
-            if file_opend:
+            if file_opend and file_obj is not None:
                 file_obj.close()
 
         return cls(kwargs)
@@ -308,7 +308,9 @@ class OrderPhotos(object):
         return photo
 
     def get(self, id):
-        return Photo.get(self._order_id, id)
+        # Note: Photo.get method doesn't exist, this would need to be implemented
+        # For now, return None or raise an exception
+        raise NotImplementedError("Photo.get method not implemented")
 
     def all(self):
         return [o._json for o in self._photo_list]
@@ -350,9 +352,12 @@ class Order(Resource):
 
     def save(self):
         options = {}
-        for name in self._editable_fields:
-            if name in self._json:
-                options[name] = self._json[name]
+        # Ensure _json is treated as a dict
+        if hasattr(self, '_json') and isinstance(self._json, dict):
+            for name in self._editable_fields:
+                if name in self._json:
+                    options[name] = self._json[name]
+        res = _request('Orders/ord_%s' % self.__getattr__(self._id_field_name), 'PATCH', data=options)
         self._json = res  # Update this object with any changes
 
     @property
@@ -360,7 +365,9 @@ class Order(Resource):
         return OrderPhotos(self)
 
     def submit(self):
-        self._json['items'] = self.photos.all()
+        # Ensure _json is treated as a dict
+        if hasattr(self, '_json') and isinstance(self._json, dict):
+            self._json['items'] = self.photos.all()
         self.photos.clear()
         res = _request('Orders', 'POST', data=self._json)
         return res
@@ -386,26 +393,27 @@ class PwintyError(PwintyException):
 
 class PwintyBadInputError(PwintyError):
     def __init__(self, message, response):
-        super(PwintyBadInputError, self).__init__(message, response, 400)
+        super().__init__(message, response, 400)
 
 
 class PwintyForbiddenError(PwintyError):
     def __init__(self, message, response):
-        super(PwintyForbiddenError, self).__init__(message, response, 403)
+        super().__init__(message, response, 403)
 
 
 class PwintyMissingError(PwintyError):
     def __init__(self, message, response):
-        super(PwintyMissingError, self).__init__(message, response, 404)
+        super().__init__(message, response, 404)
 
 
 class PwintyServerError(PwintyError):
     def __init__(self, message, response):
-        super(PwintyServerError, self).__init__(message, response, 500)
+        super().__init__(message, response, 500)
 
 
 if __name__ == '__main__':
     import doctest
     doctest.testmod()
+
 
 
